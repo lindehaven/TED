@@ -1,0 +1,317 @@
+;**********************************************************************;
+;                                                                      ;
+;   This file is part of TED, a clone of the screen-oriented text      ;
+;   editor that was once available for the RT-11 OS.                   ;
+;   Copyright (C) 2011-2020, Hector Peraza.                            ;
+;                                                                      ;
+;   This file adds Zilog Z80 assembly syntax highlighting; ZED!        ;
+;   Copyright (C) 2022, Lars Lindhaven.                                ;
+;                                                                      ;
+;   This program is free software; you can redistribute it and/or      ;
+;   modify it under the terms of the GNU General Public License as     ;
+;   published by the Free Software Foundation; either version 2 of     ;
+;   the License, or (at your option) any later version.                ;
+;                                                                      ;
+;   This program is distributed in the hope that it will be useful,    ;
+;   but WITHOUT ANY WARRANTY; without even the implied warranty of     ;
+;   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the      ;
+;   GNU General Public License for more details.                       ;
+;                                                                      ;
+;   You should have received a copy of the GNU General Public License  ;
+;   along with this program; if not, write to the Free Software        ;
+;   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.          ;
+;                                                                      ;
+;**********************************************************************;
+
+	.Z80
+
+	title	ZED - Z80 Editor
+	subttl	TED Syntax highlighting
+
+	include	TED.INC
+
+;=======================================================================
+
+;   H I G H L I G H T I N G   M O D U L E
+
+; Only assemble this file if HILI is TRUE in TED.INC
+if	HILI
+
+	public	HLPAR,HLVIEW,HLSTA
+	extrn	TNORMAL,TFAINT,TITALIC,TBOLD,TNORMAL
+
+;--------------------------------------------------------------
+
+	dseg
+
+; Definitions for highlighting of the Zilog Z80 assembly programming language.
+
+; Key characters
+HLCCO	equ	59		; ; begins comment
+HLCDQ	equ	34		; " begins and ends double-quoted string
+HLCSQ	equ	39		; ' begins and ends single-quoted string
+
+; Keywords separated by space and in lowercase if case insensitive.
+; TODO:	Limitations in the parsing algorithm gives that:
+;	- superset strings must be placed before subset strings, ex: 'cpl cp'
+;	- keywords near the end of the list takes longer time to parse
+;	- words ending in keywords are incorrectly marked as keywords
+;
+HLCSKW	equ	20h		; 00h = case sensitive, 20h = case insensitive
+HLCKW:	db	'adc add and bit call ccf cpdr cpd cpir cpi cpl cp daa dec '
+	db	'di djnz ei exx ex halt im inc indr ind inir ini in jp jr '
+	db	'lddr ldd ldir ldi ld neg nop or outd outi otdr otir out '
+	db	'pop push res reti retn ret rla rlca rlc rld rl rra rrca rrc '
+	db	'rrd rr rst sbc scf set sla sra sll srl sub xor'
+	db	' ',0		; end of keyword list, do not touch!
+
+; States
+HLSNC	equ	00h		; no change
+HLSNO	equ	01h		; normal
+HLSCO	equ	02h		; comment
+HLSSQ	equ	04h		; single-quoted string
+HLSDQ	equ	08h		; double-quoted string
+HLSKW	equ	10h		; keyword
+
+; State buffer
+HLSTA:	ds	MAXLEN
+	db	0
+
+
+	cseg
+
+HLPAR:
+; Parse line segment and store highlighting states in HLSTA.
+; Input:
+;	hl = pointer to start of line segment
+;	b = length of line segment
+; Output:
+;	Highlighting states in HLSTA.
+; Clobbers:
+;	None
+;
+	push	af		; \
+	push	bc		; \\
+	push	de		; \\\
+	push	hl		; \\\\
+	push	ix		; \\\\\
+	push	iy		; \\\\\\
+	call	HLSTAI		; initialize highlight states
+	ld	ix,HLSTA	; ix = pointer to highlighting segment
+hlploop:
+	ld	a,b		; end of line segment?
+	or	a
+	jr	z,hlpret	; return if end of line segment
+	ld	a,(hl)
+	and	07fh		; ascii character
+
+hlpco:				; is it a comment?
+	cp	HLCCO
+	jr	nz,hlpsq	; not a comment
+	ld	(ix),HLSCO	; mark beginning of comment
+	ld	c,CR
+	jr	hlpnext
+
+hlpsq:				; is it a single-quoted string?
+	cp	HLCSQ
+	jr	nz,hlpdq	; not a single-quoted string
+	ld	(ix),HLSSQ	; mark beginning of single-quoted string
+	ld	c,HLCSQ
+	jr	hlpnext
+
+hlpdq:				; is it a double-quoted string?
+	cp	HLCDQ
+	jr	nz,hlpkw	; not a double-quoted string
+	ld	(ix),HLSDQ	; mark beginning of double-quoted string
+	ld	c,HLCDQ		; find end of double-quoted string
+
+hlpnext:			; advance to next part of buffer
+	dec	b
+	inc	hl
+	inc	ix
+	call	HLPEND		; advance until character found or buffer ends
+	ld	(ix),HLSNO	; set normal state
+	jr	hlploop
+
+hlpkw:				; is it a keyword?
+	push	bc		; \\\\\\\
+	ld	de,HLCKW	; de = pointer to keywords
+	call	INKEY
+	jr	z,hlpnokw	; not a keyword
+	ld	(ix),HLSKW	; mark beginning of keyword
+	pop	iy		; /////// current remaining length
+hlpkend:
+	inc	hl		; advance in word
+	inc	ix		; advance in highlighting states
+	inc	de		; advance in keywords
+	dec	iy		; count down remaining length
+	djnz	hlpkend
+	ld	(ix),HLSNO	; mark end of keyword
+	push	iy		; \\\\\\\
+hlpnokw:
+	pop	bc		; /////// current remaining length
+	dec	b
+	inc	hl
+	inc	ix
+	jr	hlploop
+
+hlpret:				; restore registers from stack and return
+	pop	iy		; //////
+	pop	ix		; /////
+	pop	hl		; ////
+	pop	de		; ///
+	pop	bc		; //
+	pop	af		; /
+	ret
+
+
+HLPEND:
+; Advance pointers to line buffer and highlighting states until
+; the character was found or the line segment ends.
+; Input:
+;	hl = current pointer to line segment
+;	b = current remaining length of line segment
+;	c = ascii character
+;	ix = current pointer to highlighting states
+; Output:
+;	hl = updated pointer to line segment
+;	b = updated remaining length of line segment
+;	ix = updated pointer to highlighting states
+; Clobbers:
+;	af
+;
+	ld	a,b
+	or	a
+	ret	z		; end of line segment
+	ld	a,(hl)
+	and	07fh		; ascii character
+	inc	hl
+	inc	ix
+	dec	b
+	cp	c
+	jr	nz,HLPEND	; not found, try again
+	ret			; found
+
+
+INKEY:
+; Is string in keyword list?
+; Input:
+;	hl = pointer to string ending in whitespace (ASCII 0-32)
+;	de = pointer to list of keywords separated by SPC and ending with NUL
+; Output:
+;	nz if string in keyword list, z if string not in keyword list
+;	b = length of keyword if found, b = 0 if not found
+; Clobbers:
+;	af
+;
+; TODO:	Change algorithm to:
+;	- avoid incorrect highlighting of non-keywords
+;	- improve speed
+;	- remove requirement of keyword order
+;
+	push	de		; \
+	push	hl		; \\
+inkloop:
+	ld	bc,0		; length of keyword
+	push	de		; \\\ save pointer to keyword list
+inklength:
+	ld	a,(de)		; character in keyword list
+	or	a
+	jr	z,inkmiss	; end of keyword list, so its a miss
+	cp	' '
+	jr	z,inkend	; end of keyword, so length is known
+	inc	b		; increase length of keyword
+	inc	de		; advance in keyword list
+	jr	inklength
+inkend:
+	pop	de		; /// restore pointer to keyword list
+	push	bc		; \\\ save length of keyword
+	push	hl		; \\\\ save pointer to word
+inktry:
+	ld	a,(hl)		; character in word
+	and	07fh		; to ascii
+	or	HLCSKW		; keyword case sensitivity mask
+	ld	c,a
+	ld	a,(de)		; character in keyword
+	cp	c
+	jr	nz,inknomatch	; characters do not match, so try next keyword
+	inc	hl		; advance to next character in word
+	inc	de		; advance to next character in keyword
+	djnz	inktry		; all characters must match
+	ld	a,(hl)
+	and	07fh
+	cp	' '
+	jr	nz,inknows	; last character must be a white-space
+inkmatch:
+	pop	hl		; //// adjust stack pointer
+	pop	bc		; /// length of keyword
+	jr	inkreturn
+inknomatch:			; word is not same as keyword
+	inc	de
+	djnz	inknomatch	; advance to end of keyword
+	inc	de		; advance to next keyword
+inknows:
+	pop	hl		; //// restore pointer to word
+	pop	bc		; /// adjust stack pointer
+	jr	inkloop		; try next keyword
+inkmiss:
+	pop	de		; /// adjust stack pointer
+	ld	bc,0		; no match in keyword list
+
+inkreturn:			; restore registers from stack and return
+	pop	hl		; //
+	pop	de		; /
+	ld	a,b
+	or	a
+	ret
+
+
+HLVIEW:
+; View highlighting depending on highlighting states in HLSTA.
+; Input:
+;	ix = actual pointer to highlighting states
+; Output:
+;	Screen codes sent to screen.
+; Clobbers:
+;	af
+;
+	ld	a,(ix)
+	cp	HLSNO		; normal?
+	jp	z,TNORMAL	; yes, view normal
+	cp	HLSCO		; comment?
+	jp	z,TFAINT	; yes, view faint
+	cp	HLSSQ		; single-quoted string?
+	jp	z,TITALIC	; yes, view italic
+	cp	HLSDQ		; double-quoted string?
+	jp	z,TITALIC	; yes, view italic
+	cp	HLSKW		; keyword?
+	jp	z,TBOLD		; yes, view bold
+	ret			; none of the above
+
+
+HLSTAI:
+; Initialize highlighting states in HLSTA
+; Input:
+;	None
+; Output:
+;	All highlighting states set to 'no change'
+; Clobbers:
+;	None
+;
+	push	bc		; \
+	push	de		; \\
+	push	hl		; \\\
+	ld	hl,HLSTA
+	ld	de,HLSTA+1
+	ld	bc,MAXLEN
+	ld	(hl),HLSNC
+	ldir
+	pop	hl		; ///
+	pop	de		; //
+	pop	bc		; /
+	ret
+
+
+endif
+
+	end

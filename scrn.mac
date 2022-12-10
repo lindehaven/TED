@@ -4,6 +4,9 @@
 ;   editor that was once available for the RT-11 OS.                   ;
 ;   Copyright (C) 2011-2020, Hector Peraza.                            ;
 ;                                                                      ;
+;   This file adds Zilog Z80 syntax highlighting - ZED!                ;
+;   Copyright (C) 2022, Lars Lindhaven.                                ;
+;                                                                      ;
 ;   This program is free software; you can redistribute it and/or      ;
 ;   modify it under the terms of the GNU General Public License as     ;
 ;   published by the Free Software Foundation; either version 2 of     ;
@@ -28,7 +31,7 @@
 	include	TED.INC
 
 HSIZE	equ	80		; terminal window width
-VSIZE	equ	24		; terminal window height
+VSIZE	equ	25		; terminal window height
 
 ;=======================================================================
 
@@ -43,6 +46,11 @@ VSIZE	equ	24		; terminal window height
 	extrn	HOME,CLREOL,CLREOS,PUTCUR,CSRUP,CSRDN,CSRLFT
 	extrn	CSRRGT,FWDIDX,REVIDX,CPDEHL,ADDHLA,SUBHLA
 	extrn	SCRLRG,HASSRG
+
+if HILI
+	extrn	HLPAR,HLVIEW,HLSTA
+	extrn	TNORMAL
+endif
 
 ;-----------------------------------------------------------------------
 
@@ -79,8 +87,9 @@ sce2:	ld	a,(CURPOS)	; get last cursor column
 	ld	l,0
 	ld	h,VSIZE-3
 	call	nz,SCRLRG	; set region if yes
-	call	SETCUR		; postion cursor
-SLOOP:	ld	a,(CURY)	; get cursor line
+	call	SETCUR		; position cursor
+SLOOP:
+	ld	a,(CURY)	; get cursor line
 	ld	c,a
 	ld	hl,(TOPLN)
 	call	ADDHLA		; add it to top line number (obtain line #)
@@ -100,9 +109,15 @@ SLOOP:	ld	a,(CURY)	; get cursor line
 	cp	7Fh		; DEL?
 	jr	nz,sce5		; jump if not
 	call	DELCHL		; else handle it
+if HILI and HILIAR
+	call	DISPAR		; automatic refresh of syntax highlighting
+endif
 	jr	SLOOP		; loop
 
 sce5:	call	DOCHR		; handle printable char
+if HILI and HILIAR
+	call	DISPAR		; automatic refresh of syntax highlighting
+endif
 	jr	SLOOP		; loop
 
 SCTRL:	ld	hl,SLOOP
@@ -116,43 +131,67 @@ SCTRL:	ld	hl,SLOOP
 	ld	l,a
 	jp	(hl)		; call handler
 
-; Control commands in screen mode
+; Available functions in screen mode, to be used in CTLTAB below.
+;		Function	Explanation
+;		NOOP		no operation, do nothing
+;		BROWSE		exit screen mode, enter browse mode
+;		EXSCR		exit screen mode, enter command mode
+;		CURLFT		cursor left
+;		CURRGT		cursor right
+;		CURUP		cursor up
+;		CURDN		cursor down
+;		CURTB		cursor top/bottom of screen
+;		CURBGL		cursor begin/end of line
+;		PRVTAB		cursor to prev tab stop
+;		NXTTAB		cursor to next tab stop
+;		DELCHR		delete char right
+;		DELCHL		delete char left
+;		DOTAB		insert tab
+;		INSLNA		insert new line above
+;		INSLNB		insert new line below
+;		SPLIT		split line at cursor pos
+;		DUPLN		duplicate line
+;		DELLN		delete line
+;		INSOVR		toggle insert/replace mode
+;		DOESC		escape sequence
+;		REFRSH		refresh screen
 
-CTLTAB:	dw	NOOP		; ^@ no-op
-	dw	NOOP		; ^A no-op
-	dw	BROWSE		; ^B browse mode
-	dw	EXSCR		; ^C exit to command mode
-	dw	CURRGT		; ^D cursor right
-	dw	CURUP		; ^E cursor up
-	dw	NXTTAB		; ^F move cursor to next tab stop
-	dw	DELCHR		; ^G delete char right
-	dw	DELCHL		; ^H delete char left
-	dw	DOTAB		; ^I tab
-	dw	INSLNB		; ^J insert new line below
-	dw	INSLNA		; ^K insert line above
-	dw	CURBGL		; ^L cursor begin/end of line
-	dw	SPLIT		; ^M split line at cursor pos
-	dw	BROWSE		; ^N browse mode
-	dw	NOOP		; ^O no-op
-	dw	DUPLN		; ^P duplicate line
-	dw	PRVTAB		; ^Q move cursor to prev tab stop
-	dw	REFRSH		; ^R refresh
-	dw	CURLFT		; ^S cursor left
-	dw	CURTB		; ^T cursor top/bottom
-	dw	NOOP		; ^U no-op
-	dw	INSOVR		; ^V toggle insert mode
-	dw	NOOP		; ^W no-op
-	dw	CURDN		; ^X cursor down
-	dw	DELLN		; ^Y delete line
-	dw	EXSCR		; ^Z exit to command mode
-	dw	DOESC		; ^[ escape sequence
-	dw	NOOP		; ^\ no-op
-	dw	DELCHR		; ^] delete char right
-	dw	DELLN		; ^^ delete line
-	dw	REFRSH		; ^_ refresh screen
+; Control key mapping to functions in screen mode
+;	Function	ASCII Key  Explanation
+CTLTAB:	dw	NOOP	;  00  ^@  no operation, do nothing
+	dw	NOOP	;  01  ^A  no operation, do nothing
+	dw	BROWSE	;  02  ^B  exit screen mode, enter browse mode
+	dw	EXSCR	;  03  ^C  exit screen mode, enter command mode
+	dw	CURRGT	;  04  ^D  cursor right
+	dw	CURUP	;  05  ^E  cursor up
+	dw	NXTTAB	;  06  ^F  cursor to next tab stop
+	dw	DELCHR	;  07  ^G  delete char right
+	dw	DELCHL	;  08  ^H  delete char left
+	dw	DOTAB	;  09  ^I  insert tab
+	dw	INSLNB	;  10  ^J  insert new line below
+	dw	INSLNA	;  11  ^K  insert new line above
+	dw	CURBGL	;  12  ^L  cursor to beginning/end of line
+	dw	SPLIT	;  13  ^M  split line at cursor pos
+	dw	INSLNB	;  14  ^N  insert new line below
+	dw	NOOP	;  15  ^O  no operation, do nothing
+	dw	DUPLN	;  16  ^P  duplicate line
+	dw	PRVTAB	;  17  ^Q  cursor to prev tab stop
+	dw	REFRSH	;  18  ^R  refresh screen
+	dw	CURLFT	;  19  ^S  cursor left
+	dw	CURTB	;  20  ^T  cursor top/bottom of screen
+	dw	NOOP	;  21  ^U  no operation, do nothing
+	dw	INSOVR	;  22  ^V  toggle insert mode
+	dw	NOOP	;  23  ^W  no operation, do nothing
+	dw	CURDN	;  24  ^X  cursor down
+	dw	DELLN	;  25  ^Y  delete line
+	dw	EXSCR	;  26  ^Z  exit to command mode
+	dw	DOESC	;  27  ^[  escape sequence
+	dw	NOOP	;  28  ^\  no operation, do nothing
+	dw	DELCHR	;  29  ^]  delete char right
+	dw	DELLN	;  30  ^^  delete line
+	dw	REFRSH	;  31  ^_  refresh screen
 
-; ^C or ^Z - exit screen editor to command mode
-
+; Exit screen mode, enter command mode
 EXSCR:	call	STLREC		; store edited line back into records
 	call	HASSRG		; terminal supports scroll region?
 	ld	hl,0FFFFh
@@ -164,15 +203,15 @@ EXSCR:	call	STLREC		; store edited line back into records
 
 SCRERR:	call	CLS		; clear screen and home cursor
 	jp	WFOV		; print "WORK FILE OVERFLOW" and go back
-	;  to command mode
+				;  to command mode
 
-; ^[ - handle escape sequence
+; Handle escape sequence
 
 DOESC:	call	XLTESC		; translate escape sequence to ctrl char
 	pop	hl		; discard return address
 	jp	SCTRL		; process the ctrl command
 
-; DEL or ^H - delete char left
+; Delete char left
 
 DELCHL:	ld	a,(CURX)
 	or	a		; on leftmost column?
@@ -375,7 +414,8 @@ rplc2:	ld	a,(SCRX)
 	ld	b,a
 	sub	c		; compute screen cursor column
 	cp	HSIZE-1		; cursor on last column of the screen?
-	call	nc,SETCUR	; shift screen left if yes
+	ret	c		; no
+	call	SETCUR		; yes, shift screen left
 	ret
 
 rplts:	push	bc
@@ -424,7 +464,7 @@ insc2:	push	hl
 	pop	hl
 	jp	rplc0
 
-; ^V - toggle insert mode
+; Toggle insert/replace mode
 
 INSOVR:	ld	a,(INSFLG)	; toggle insert flag
 	cpl
@@ -433,7 +473,7 @@ INSOVR:	ld	a,(INSFLG)	; toggle insert flag
 	call	SETCUR		; restore cursor position
 NOOP:	ret
 
-; ^I (TAB) - insert tab
+; Insert tab
 
 DOTAB:	call	LOADLC		; load line at cursor into edit buffer
 	ld	a,(CURX)	; get character index
@@ -473,7 +513,7 @@ rplt3:	inc	hl
 	jr	nz,RPLTAB
 	ret
 
-; insert tab into edit buffer
+; Insert tab into edit buffer
 
 INSTAB:	ld	e,b		; save current index in reg E
 	ld	a,(hl)
@@ -776,7 +816,7 @@ adj2:	ld	(hl),a
 adj1:	pop	hl
 	ret
 
-; ^G or ^] - delete char right
+; Delete char right
 
 DELCHR:	call	LOADLC		; load line at cursor into edit buffer
 	ld	a,(CURX)	; get character index
@@ -815,7 +855,7 @@ delc2:	ld	a,c
 	call	RMSSPC
 	jr	dch2
 
-; ^S - cursor left
+; Cursor left
 
 CURLFT:	ld	a,(CURX)
 	or	a
@@ -830,7 +870,7 @@ CURLFT:	ld	a,(CURX)
 	jp	nc,CSRLFT	; if >= 0 move cursor left and return
 	jp	SETCUR
 
-; ^D - cursor right
+; Cursor right
 
 CURRGT:	ld	a,(CURX)
 	cp	MAXLEN-1	; cursor on last column?
@@ -844,9 +884,10 @@ CURRGT:	ld	a,(CURX)
 	sub	b		; check screen column
 	cp	HSIZE-1
 	jp	c,CSRRGT	; if < HSIZE move cursor right and return
-	jp	SETCUR
+	call	SETCUR
+	ret
 
-; ^Q - move cursor to prev tab stop
+; Move cursor to prev tab stop
 
 PRVTAB:	ld	a,(CURX)	; get character index
 	ld	b,a		;  in reg B
@@ -871,7 +912,7 @@ pt2:	sub	b		; obtain distance
 	call	SETCUR		; position cursor
 	ret
 
-; ^F - move cursor to next tab stop
+; Move cursor to next tab stop
 
 NXTTAB:	push	bc
 	ld	a,(CURX)	; get char index
@@ -892,7 +933,7 @@ nt1:	sub	c		; compute distance to next tab stop
 nt2:	pop	bc
 	ret
 
-; ^L - move cursor to begin/end of line
+; Move cursor to begin/end of line
 
 CURBGL:	ld	a,(CURX)
 	or	a
@@ -903,7 +944,7 @@ CURBGL:	ld	a,(CURX)
 cbe1:	ld	(CURX),a
 	jp	SETCUR		; position cursor and return
 
-; ^M (CR) - split line
+; Split line
 
 SPLIT:	call	LOADLC		; load line at cursor into edit buffer
 	ld	a,(CURLEN)	; get current line length
@@ -976,7 +1017,7 @@ splt8:	ld	a,c
 	call	SETCUR		; position cursor
 	ret
 
-; ^P - duplicate line
+; Duplicate line
 
 DUPLN:	push	hl
 	call	STLREC		; store edited line back into records
@@ -1006,7 +1047,7 @@ DUPLN:	push	hl
 	pop	hl
 	ret
 
-; ^K - insert line above
+; Insert new line above
 
 INSLNA:	push	hl
 	push	de
@@ -1069,7 +1110,7 @@ insa3:	pop	bc
 	pop	hl
 	ret
 
-; ^J (LF) - insert new line below
+; Insert new line below
 
 INSLNB:	push	hl
 	push	de
@@ -1136,7 +1177,7 @@ insb2:	pop	bc
 	pop	hl
 	ret
 
-; ^Y or ^^ - delete line
+; Delete line
 
 DELLN:	push	hl
 	push	de
@@ -1340,7 +1381,7 @@ dln18:	pop	bc
 	pop	hl
 	ret
 
-; ^E - cursor up
+; Cursor up
 
 CURUP:	push	hl
 	push	de
@@ -1388,7 +1429,7 @@ cu3:	pop	bc
 	pop	hl
 	ret
 
-; ^X - cursor down
+; Cursor down
 
 CURDN:	push	hl
 	push	de
@@ -1442,7 +1483,7 @@ cd2:	pop	bc
 	pop	hl
 	ret
 
-; ^T - cursor top/bottom
+; Cursor top/bottom
 
 CURTB:	ld	a,(CURY)	; check cursor line
 	or	a
@@ -1454,7 +1495,7 @@ ctb1:	xor	a		; set cursor on first line
 ctb2:	ld	(CURY),a	; set cursor line
 	jp	SETCUR		; position cursor and return
 
-; ^R or ^_ - refresh screen
+; Refresh screen
 
 REFRSH:	push	hl
 	ld	a,(CURY)
@@ -1468,7 +1509,7 @@ REFRSH:	push	hl
 	pop	hl
 	ret
 
-; ^B or ^N - browse mode
+; Browse mode
 
 BROWSE:	call	SHOWST		; cursor on bottom line, display line number
 	ld	a,'*'		; show we're in browse mode with a '*'
@@ -1805,6 +1846,26 @@ lln4:	pop	bc
 	pop	hl
 	ret
 
+if HILI and HILIAR
+; Display line in edit buffer with automatic refresh for syntax highlighting
+DISPAR:
+	push	af		; \
+	push	bc		; \\
+	push	de		; \\\
+	push	hl		; \\\\
+	ld	a,(SCRX)
+	push	af		; \\\\\
+	call	DISPLB
+	pop	af		; /////
+	ld	(SCRX),a
+	call	SETCUR
+	pop	hl		; ////
+	pop	de		; ///
+	pop	bc		; //
+	pop	af		; /
+	ret
+endif
+
 ; Display line in edit buffer
 
 DISPLB:	ld	a,(CURX)
@@ -1818,45 +1879,76 @@ DISPLB:	ld	a,(CURX)
 	ret
 
 ; Display line segment from current cursor position to end
-
 DISPLE:	push	hl
 	push	de
 	push	bc
 	call	CLREOL
-	ld	a,(CURX)	; get current cursor column
+	ld	a,(CURX)	; get current character index
 	push	af		;  remember it
 	ld	c,a
 	ld	a,(SCRX)	; get screen left offset
 	ld	b,a		;  into B
 	ld	a,c
-	ld	hl,EDITBF	; get address of edit line buffer into HL
-	call	ADDHLA		; HL = start of segment to display
+	ld	hl,EDITBF	; pointer to edit line buffer
+if HILI
+	push	af		; remember current character index
+	push	bc		; remember screen left offset
+	push	hl		; remember edit line buffer
+	push	af		; remember current character index
+	ld	a,(CURLEN)	; get current line length
+	ld	b,a
+	call	HLPAR		; parse line for highlighting
+	pop	af		; restore current character index
+	ld	ix,HLSTA	; pointer to highlighting states
+disphl1:
+	or	a		; viewed all highlighting?
+	jr	z,disphl2	; yes, done viewing highlighting
+	push	af
+	call	HLVIEW		; no, view highlighting
+	pop	af
+	dec	a
+	inc	ix		; advance pointer to highlighting state
+	jr	disphl1	
+disphl2:
+	pop	hl		; restore edit line buffer
+	pop	bc		; restore screen left offset
+	pop	af		; restore current characer index
+endif
+	call	ADDHLA		; current pointer to line segment
 	ld	a,(CURLEN)	; get current line length
 	inc	b
 	sub	b		; subtract screen offset
-	jr	c,dple8		; return if there are no characters to display
+	jp	c,dple8		; return if there are no characters to display
 	inc	a
 	cp	HSIZE		; segment length > screen width?
 	jr	c,dple1		; jump if not
 	ld	a,HSIZE		; else truncate to number of display cols
 dple1:	inc	c		; (so we can use 'jc' instead of 'jc'+'jz')
-	dec	b		;;note inc b above
+	dec	b		; note inc b above
 	add	a,b
 	sub	c		; subtract cursor position
 	jr	c,dple8		; return if result <= 0
-	inc	a		; get number of characters to display
-	ld	b,a		;  into B
+	inc	a		; number of characters to display
+	ld	b,a		;
 	dec	c
-	ld	e,c		; E = column on screen
-	ld	c,0		; C will count spaces
-dple2:	ld	a,(hl)
+	ld	e,c		; column on screen
+	ld	c,0		; keeps count of spaces
+
+dple2:	; loop for each column
+if HILI
+	call	HLVIEW		; view highlighting
+endif
+dplenc:	ld	a,(hl)		; current position in segment to display
 	cp	SSPC		; soft space?
 	jr	z,dple3		; display as space
 	cp	TAB		; TAB?
 	jr	z,dple3		; display as space
 	cp	' '		; space?
 	jr	nz,dple4	; jump if not
-dple3:	inc	hl		; else advance pointer
+dple3:	inc	hl		; else advance line segment pointer
+if	HILI
+	inc	ix		; else advance highlight state pointer
+endif
 	inc	c		; increment space count
 	inc	e		; increment column pos
 	jr	dple7		; and jump to process next column
@@ -1873,19 +1965,23 @@ dple5:	ld	a,e
 	call	SETCUR		; position cursor
 dple6:	ld	a,(hl)		; get char back into A
 	inc	hl		; advance pointer
+if HILI
+	inc	ix		; advance highlight state pointer
+endif
 	inc	e
 	call	PUTC		; output char
 	ld	c,0		; clear count of spaces
 dple7:	djnz	dple2		; loop until all columns are output
-;;	ld	a,HSIZE-1
-;;	ld	(CURX),a	; set cursor on last column of the screen
-;;	call	SETCUR		;  (in case a long line wrapped around)
 dple8:	pop	af
 	ld	(CURX),a	; restore saved cursor column
 	pop	bc
 	pop	de
 	pop	hl
+if HILI
+	call	TNORMAL		; normal text after segment has been displayed
+endif
 	ret
+
 
 ; Store the line currently in edit buffer back into records.
 

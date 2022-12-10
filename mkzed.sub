@@ -1,0 +1,10 @@
+; Submit file to assemble and link ZED with Zilog Z80 syntax highlighting.
+; Edit TED.INC to enable Zilog Z80 assembly syntax highlighting.
+m80 =main
+m80 =termdef
+m80 =fileio
+m80 =scrn
+m80 =cmds
+m80 =cpmio
+m80 =hili
+link zed=termdef,main,fileio,scrn,cmds,cpmio,hili

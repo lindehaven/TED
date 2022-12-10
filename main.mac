@@ -123,51 +123,53 @@ BADCMD:	ld	hl,ERRCMD	; 'WRONG COMMAND'
 
 ; Command table
 
-CMDTBL:	db	'CL'		; clear buffer
+CMDTBL:
+
+	db	'CL'		; Clear buffer!
 	dw	CMDCL
 
-	db	'FR'		; show free memory
-	dw	CMDFR
-
-	db	'P '		; set text index (position)
+	db	'P '		; Show/set text index
 	dw	CMDP
 
-	db	'PR'		; print lines on terminal
+	db	'PR'		; Print text on terminal
 	dw	CMDPR
 
-	db	'S '		; enter screen mode
+	db	'S '		; Enter screen mode
 	dw	CMDS
-
 	db	'  '		; ^C also enters screen mode
 	dw	CMDS
 
-	db	'EX'		; exit editor
+	db	'FR'		; Show available memory
+	dw	CMDFR
+
+	db	'EX'		; EXit editor without saving buffer
 	dw	CMDEX
 
-	db	'R '		; read file
+	db	'R '		; Read text from file into buffer
 	dw	CMDR
 
-	db	'W '		; write file
+	db	'W '		; Write buffer to file
 	dw	CMDW
 
-	db	'F '		; show current file name
+	db	'F '		; Show file name
 	dw	CMDF
 
-	db	'M '		; copy lines
+	db	'M '		; Copy lines in buffer
 	dw	CMDM
 
-	db	'MD'		; move lines
+	db	'MD '		; Move lines in buffer
 	dw	CMDMD
 
-	db	'D '		; delete lines
+	db	'D '		; Delete lines from buffer
 	dw	CMDD
 
-	db	'SU'		; substitute
+	db	'SU'		; SUbstitute text in buffer
 	dw	CMDSU
 
 	db	0
 
-PROMPT:	db	'TED>',0	; prompt
+
+PROMPT:	db	'ZED> ',0	; prompt
 
 ERRCMD:	db	'Wrong command',LF,CR,0
 
@@ -206,7 +208,7 @@ CMDFR:	ld	hl,(NUMFRE)	; free records
 	ld	a,'0'		; filler
 	call	HLDEC		; display value as decimal
 	ld	hl,MSGFRE
-	call	PUTSTR		; ' RECORDS FREE OUT OF '
+	call	PUTSTR
 	ld	hl,(NUMREC)	; total records
 	ld	a,'0'
 	call	HLDEC		; display value as decimal
@@ -2296,7 +2298,7 @@ ARGSTR:	dw	0		; string arg address
 ; for some data buffers
 
 CMDBUF	equ	$		; 82 bytes used for command line buffer
-EDITBF	equ	CMDBUF+82	; MAXLEN+2 bytes used as edit line fuffer
+EDITBF	equ	CMDBUF+82	; MAXLEN+2 bytes used as edit line buffer
 TMPBUF	equ	EDITBF+MAXLEN+2	; MAXLEN bytes used for temporary operations
 ENDDAT	equ	TMPBUF+MAXLEN	; end of buffer area
 

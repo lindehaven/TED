@@ -4,6 +4,9 @@
 ;   editor that was once available for the RT-11 OS.                   ;
 ;   Copyright (C) 2011-2020, Hector Peraza.                            ;
 ;                                                                      ;
+;   Syntax highlighting added.                                         ;
+;   Copyright (C) 2022, Lars Lindehaven.                               ;
+;                                                                      ;
 ;   This program is free software; you can redistribute it and/or      ;
 ;   modify it under the terms of the GNU General Public License as     ;
 ;   published by the Free Software Foundation; either version 2 of     ;
@@ -27,17 +30,18 @@
 
 	include	TED.INC
 
-VT100	equ	TRUE
-
 ;=======================================================================
 
 ;   T E R M I N A L   C O N T R O L   M O D U L E
 
 ;     (Link as first module)
 
-	public	HOME,CLS,CLREOS,CLREOL,CSRUP,CSRDN,CSRLFT
-	public	CSRRGT,PUTCUR,FWDIDX,REVIDX,INSLIN,DELLIN
-	public	HASSRG,SCRLRG,TRMNAM
+	public	HOME,CLS,CLREOS,CLREOL,CSRUP,CSRDN
+	public	CSRLFT,CSRRGT,PUTCUR,FWDIDX,REVIDX
+	public	INSLIN,DELLIN,HASSRG,SCRLRG,TRMNAM
+if HILI
+	public	TNORMAL,TFAINT,TITALIC,TBOLD
+endif
 
 	extrn	PUTC
 
@@ -49,57 +53,35 @@ VT100	equ	TRUE
 
 	org	10h-3
 
-	if	VT100
+vtname:		db	'ANSI',0
+vtsize:		db	80,24			; width, height
+vclscr:		db	6,ESC,'[H',ESC,'[J',0	; cursor home and clear screen
+vcleos:		db	3,ESC,'[J',0		; clear to end of screen
+vcleol:		db	3,ESC,'[K',0		; clear to end of line
+vcurup:		db	3,ESC,'[A',0		; cursor up
+vcurdn:		db	3,ESC,'[B',0		; cursor down
+vcurrgt:	db	3,ESC,'[C',0		; cursor right
+vcurlft:	db	3,ESC,'[D',0		; cursor left
+vhome:		db	3,ESC,'[H',0		; cursor home
+vcurprf:	db	2,ESC,'[',0		; cursor position prefix
+vcursep:	db	1,';',0			; cursor position separator
+vcurpst:	db	1,'H',0			; cursor position postfix
+vcurbcd:	db	TRUE			; binary coded decimal?
+vcuryof:	db	1			; row offset
+vcurxof:	db	1			; col offset
+vxfirst:	db	FALSE			; column first?
+vfwdidx:	db	2,ESC,'D',0		; scroll window up
+vrevidx:	db	2,ESC,'M',0		; scroll window down
+vinsln:		db	0			; insert line
+vdelln:		db	0			; delete line
+vscrlrg:	db	1,'r',0			; current number (bcd)
 
-vtname:	db	'VT100',0,0,0,0,0,0,0,0,0
-vtsize:	db	80,24			; width, height
-vclscr:	db	6,ESC,'[H',ESC,'[J',0
-vcleos:	db	3,ESC,'[J',0,0,0,0
-vcleol:	db	3,ESC,'[K',0,0,0,0
-vcurup:	db	3,ESC,'[A',0,0,0,0
-vcurdn:	db	3,ESC,'[B',0,0,0,0
-vcurrgt:db	3,ESC,'[C',0,0,0,0
-vcurlft:db	3,ESC,'[D',0,0,0,0
-vhome:	db	3,ESC,'[H',0,0,0,0
-vcurprf:db	2,ESC,'[',0,0,0,0,0
-vcursep:db	1,';',0,0,0,0,0,0
-vcurpst:db	1,'H',0,0,0,0,0,0
-vcurbcd:db	TRUE
-vcuryof:db	1
-vcurxof:db	1
-vxfirst:db	FALSE
-vfwdidx:db	2,ESC,'D',0,0,0,0,0
-vrevidx:db	2,ESC,'M',0,0,0,0,0
-vinsln:	db	0,0,0,0,0,0,0,0		; VT220/240 only?
-vdelln:	db	0,0,0,0,0,0,0,0
-vscrlrg:db	1,'r',0,0,0,0,0,0
-
-	else
-
-vtname:	db	'VT52',0,0,0,0,0,0,0,0,0,0
-vtsize:	db	80,24			; width, height
-vclscr:	db	4,ESC,'H',ESC,'J',0,0,0
-vcleos:	db	2,ESC,'J',0,0,0,0,0
-vcleol:	db	2,ESC,'K',0,0,0,0,0
-vcurup:	db	2,ESC,'A',0,0,0,0,0
-vcurdn:	db	2,ESC,'B',0,0,0,0,0
-vcurrgt:db	2,ESC,'C',0,0,0,0,0
-vcurlft:db	2,ESC,'D',0,0,0,0,0
-vhome:	db	2,ESC,'H',0,0,0,0,0
-vcurprf:db	2,ESC,'Y',0,0,0,0,0
-vcursep:db	0,0,0,0,0,0,0,0
-vcurpst:db	0,0,0,0,0,0,0,0
-vcurbcd:db	FALSE
-vcuryof:db	32
-vcurxof:db	32
-vxfirst:db	FALSE
-vfwdidx:db	1,LF,0,0,0,0,0,0
-vrevidx:db	2,ESC,'I',0,0,0,0,0
-vinsln:	db	0,0,0,0,0,0,0,0
-vdelln:	db	0,0,0,0,0,0,0,0
-vscrlrg:db	0,0,0,0,0,0,0,0
-
-	endif
+if HILI
+vnormal:	db	4,ESC,'[0m',0		; normal 
+vbold:		db	4,ESC,'[1m',0		; bold
+vfaint:		db	4,ESC,'[2m',0		; faint
+vitalic:	db	4,ESC,'[3m',0		; italic
+endif
 
 	org	0B0h-3
 
@@ -119,6 +101,7 @@ CLREOS:	push	hl
 CLREOL:	push	hl
 	ld	hl,vcleol
 	jp	pseq
+
 
 HOME:	push	hl
 	ld	hl,vhome
@@ -289,12 +272,14 @@ REVIDX:	push	hl
 	ld	hl,vrevidx
 	jr	pseq
 
+
 INSLIN:	push	hl
 	ld	hl,vinsln
 	jr	putseq
 
 DELLIN:	push	hl
 	ld	hl,vdelln
+
 pseq:	call	putseq
 	pop	hl
 	ret
@@ -311,5 +296,56 @@ pseq1:	ld	a,(hl)
 	djnz	pseq1
 	pop	bc
 	ret
+
+if HILI
+TNORMAL:push	af
+	push	bc
+	push	de
+	push	hl
+	ld	hl,vnormal
+	call	putseq
+	pop	hl
+	pop	de
+	pop	bc
+	pop	af
+	ret
+
+
+TFAINT:	push	af
+	push	bc
+	push	de
+	push	hl
+	ld	hl,vfaint
+	call	putseq
+	pop	hl
+	pop	de
+	pop	bc
+	pop	af
+	ret
+
+TITALIC:push	af
+	push	bc
+	push	de
+	push	hl
+	ld	hl,vitalic
+	call	putseq
+	pop	hl
+	pop	de
+	pop	bc
+	pop	af
+	ret
+
+TBOLD:	push	af
+	push	bc
+	push	de
+	push	hl
+	ld	hl,vbold
+	call	putseq
+	pop	hl
+	pop	de
+	pop	bc
+	pop	af
+	ret
+endif
 
 	end

@@ -10,3 +10,6 @@ commands which is more WordStar-like.
 
 This version is for a Z80 CPU and runs under CP/M or RSX180. Can edit files
 larger than the available RAM, up to approx 1Mbyte.
+
+This version also supports syntax highlighting for the Zilog Z80 assembly
+language. Please read ZED.MD for further information.
