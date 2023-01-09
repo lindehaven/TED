@@ -5,7 +5,7 @@
 ;   Copyright (C) 2011-2020, Hector Peraza.                            ;
 ;                                                                      ;
 ;   This file adds Zilog Z80 assembly syntax highlighting; ZED!        ;
-;   Copyright (C) 2022, Lars Lindhaven.                                ;
+;   Copyright (C) 2022-2023, Lars Lindehaven.                          ;
 ;                                                                      ;
 ;   This program is free software; you can redistribute it and/or      ;
 ;   modify it under the terms of the GNU General Public License as     ;
@@ -51,19 +51,21 @@ HLCCO	equ	59		; ; begins comment
 HLCDQ	equ	34		; " begins and ends double-quoted string
 HLCSQ	equ	39		; ' begins and ends single-quoted string
 
-; Keywords separated by space and in lowercase if case insensitive.
-; TODO:	Limitations in the parsing algorithm gives that:
-;	- superset strings must be placed before subset strings, ex: 'cpl cp'
-;	- keywords near the end of the list takes longer time to parse
-;	- words ending in keywords are incorrectly marked as keywords
-;
+; Keywords shall be written in lowercase if case insensitive.
 HLCSKW	equ	20h		; 00h = case sensitive, 20h = case insensitive
-HLCKW:	db	'adc add and bit call ccf cpdr cpd cpir cpi cpl cp daa dec '
-	db	'di djnz ei exx ex halt im inc indr ind inir ini in jp jr '
-	db	'lddr ldd ldir ldi ld neg nop or outd outi otdr otir out '
-	db	'pop push res reti retn ret rla rlca rlc rld rl rra rrca rrc '
-	db	'rrd rr rst sbc scf set sla sra sll srl sub xor'
-	db	' ',0		; end of keyword list, do not touch!
+
+; There is a keyword list for each keyword length to increase performance.
+; Keywords are separated by SPC and each keyword list ends with SPC NUL.
+HLCKW2:	db	'cp di ei ex im in jp jr ld or rl rr'
+	db	' ',0
+HLCKW3:	db	'adc add and bit ccf cpd cpi cpl daa dec exx inc ind ini ldd '
+	db	'ldi neg nop out pop res ret rla rlc rld rra rrc rrd rst sbc '
+	db	'scf set sla sra sll srl sub xor'
+	db	' ',0
+HLCKW4:	db	'call cpdr cpir djnz halt indr inir lddr ldir outd outi otdr '
+	db	'otir push reti retn rlca rrca'
+	db	' ',0
+; Keyword lists for keywords of other lengths can be added here...
 
 ; States
 HLSNC	equ	00h		; no change
@@ -97,63 +99,79 @@ HLPAR:
 	push	ix		; \\\\\
 	push	iy		; \\\\\\
 	call	HLSTAI		; initialize highlight states
-	ld	ix,HLSTA	; ix = pointer to highlighting segment
+	ld	ix,HLSTA	; pointer to highlighting segment
 hlploop:
-	ld	a,b		; end of line segment?
+	ld	a,b		; line segment length
 	or	a
-	jr	z,hlpret	; return if end of line segment
-	ld	a,(hl)
-	and	07fh		; ascii character
+	jp	z,hlpret	; return if end of line segment
+	ld	a,(hl)		; get character from line buffer
 
 hlpco:				; is it a comment?
 	cp	HLCCO
-	jr	nz,hlpsq	; not a comment
+	jr	nz,hlpsq	; no, check if single-quoted string
 	ld	(ix),HLSCO	; mark beginning of comment
 	ld	c,CR
 	jr	hlpnext
 
 hlpsq:				; is it a single-quoted string?
 	cp	HLCSQ
-	jr	nz,hlpdq	; not a single-quoted string
+	jr	nz,hlpdq	; no, check if double-quoted string
 	ld	(ix),HLSSQ	; mark beginning of single-quoted string
 	ld	c,HLCSQ
 	jr	hlpnext
 
 hlpdq:				; is it a double-quoted string?
 	cp	HLCDQ
-	jr	nz,hlpkw	; not a double-quoted string
+	jr	nz,hlpwo	; no, check if word
 	ld	(ix),HLSDQ	; mark beginning of double-quoted string
 	ld	c,HLCDQ		; find end of double-quoted string
 
 hlpnext:			; advance to next part of buffer
-	dec	b
 	inc	hl
 	inc	ix
-	call	HLPEND		; advance until character found or buffer ends
-	ld	(ix),HLSNO	; set normal state
+	dec	b
+	call	HLPEND		; until character found or buffer ends
+	ld	(ix),HLSNO	; set normal state at the end
 	jr	hlploop
 
-hlpkw:				; is it a keyword?
-	push	bc		; \\\\\\\
-	ld	de,HLCKW	; de = pointer to keywords
-	call	INKEY
-	jr	z,hlpnokw	; not a keyword
-	ld	(ix),HLSKW	; mark beginning of keyword
-	pop	iy		; /////// current remaining length
-hlpkend:
-	inc	hl		; advance in word
-	inc	ix		; advance in highlighting states
-	inc	de		; advance in keywords
-	dec	iy		; count down remaining length
-	djnz	hlpkend
-	ld	(ix),HLSNO	; mark end of keyword
-	push	iy		; \\\\\\\
-hlpnokw:
-	pop	bc		; /////// current remaining length
-	dec	b
-	inc	hl
-	inc	ix
+hlpwo:				; is it a word?
+	call	HLPLET		; a word consists of letters
+	ld	a,c		; word length
+	ld	de,HLCKW2	; there are keywords of length 2
+	cp	2		; is the word of length 2?
+	jr	z,hlpwoyes
+	ld	de,HLCKW3	; there are keywords of length 3
+	cp	3		; is the word of length 3?
+	jr	z,hlpwoyes
+	ld	de,HLCKW4	; there are keywords of length 4
+	cp	4		; is the word of length 4?
+	jr	z,hlpwoyes
+; Keywords of other lengths can be added here...
+
+hlpwono:			; no, the word cannot be a keyword
+	inc	hl		; advance pointer to line buffer
+	inc	ix		; advance pointer to highlighting states
 	jr	hlploop
+
+hlpwoyes:			; yes, the word might be a keyword
+	push	bc		; \\\\\\\
+	push	hl		; \\\\\\\\
+	push	ix		; \\\\\\\\\
+	ld	b,c		; word length
+hlpworev:			; reverse until beginning of the word
+	dec	hl
+	dec	ix
+	djnz	hlpworev
+hlpkw:				; is the word a keyword?
+	call	INKEY
+	jr	z,hlpkend	; no, continue
+	ld	(ix),HLSKW	; yes, mark beginning of keyword
+hlpkend:
+	pop	ix		; ///////// restore pointer to states
+	pop	hl		; //////// restore pointer to line buffer
+	pop	bc		; /////// restore number of remaining
+	ld	(ix),HLSNO	; mark end of keyword
+	jp	hlploop
 
 hlpret:				; restore registers from stack and return
 	pop	iy		; //////
@@ -171,7 +189,7 @@ HLPEND:
 ; Input:
 ;	hl = current pointer to line segment
 ;	b = current remaining length of line segment
-;	c = ascii character
+;	c = character
 ;	ix = current pointer to highlighting states
 ; Output:
 ;	hl = updated pointer to line segment
@@ -184,13 +202,44 @@ HLPEND:
 	or	a
 	ret	z		; end of line segment
 	ld	a,(hl)
-	and	07fh		; ascii character
 	inc	hl
 	inc	ix
 	dec	b
 	cp	c
-	jr	nz,HLPEND	; not found, try again
-	ret			; found
+	jr	nz,HLPEND	; character was not found, try again
+	ret			; character was found
+
+HLPLET:
+; Advance pointers to line buffer and highlighting states while
+; characters in the line buffer are letters.
+; Input:
+;	hl = current pointer to line segment
+;	b = current remaining length of line segment
+;	ix = current pointer to highlighting states
+; Output:
+;	hl = updated pointer to line segment
+;	b = updated remaining length of line segment
+;	ix = updated pointer to highlighting states
+;	c = number of consequtive letters
+; Clobbers:
+;	af
+;
+	ld	c,0
+hlple1:
+	ld	a,b
+	or	a
+	ret	z		; end of line segment
+	ld	a,(hl)
+	cp	'A'
+	ret	c		; not an uppercase letter
+	or	20h
+	cp	'{'
+	ret	nc		; not a lowercase letter
+	inc	hl
+	inc	ix
+	dec	b
+	inc	c
+	jr	hlple1		; repeat while letter
 
 
 INKEY:
@@ -203,11 +252,6 @@ INKEY:
 ;	b = length of keyword if found, b = 0 if not found
 ; Clobbers:
 ;	af
-;
-; TODO:	Change algorithm to:
-;	- avoid incorrect highlighting of non-keywords
-;	- improve speed
-;	- remove requirement of keyword order
 ;
 	push	de		; \
 	push	hl		; \\

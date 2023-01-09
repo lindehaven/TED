@@ -5,7 +5,7 @@
 ;   Copyright (C) 2011-202, Hector Peraza.                             ;
 ;                                                                      ;
 ;   This file adds Zilog Z80 assembly syntax highlighting; ZED!        ;
-;   Copyright (C) 2022, Lars Lindhaven.                                ;
+;   Copyright (C) 2022-2023, Lars Lindehaven.                          ;
 ;                                                                      ;
 ;   This program is free software; you can redistribute it and/or      ;
 ;   modify it under the terms of the GNU General Public License as     ;

@@ -170,7 +170,7 @@ cmdm1:	ld	(OPMODE),a	; set mode
 	ld	(COUNT),hl	; clear number of lines copied/moved
 	call	GETARG		; process arguments
 	ret	c		; on error return
-	call	GTTXPA
+cmdmdx:	call	GTTXPA		;
 	ret	c		; on error return
 	call	SETTXP		; curr rec <- HL, curr ln <- DE, chr pos <- B
 	ld	(CLINE),de	; store start line number

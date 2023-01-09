@@ -169,7 +169,11 @@ CMDTBL:
 	db	0
 
 
-PROMPT:	db	'ZED> ',0	; prompt
+if HILI
+PROMPT:	db	'ZED> ',0	; highlighting prompt
+else
+PROMPT:	db	'TED> ',0	; original prompt
+endif
 
 ERRCMD:	db	'Wrong command',LF,CR,0
 
