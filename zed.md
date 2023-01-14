@@ -10,32 +10,20 @@ DEC's RT-11 OS.
 Open TED.INC in a text editor and check that HILI is set to TRUE.
 
 Then, set HILIAR to TRUE or FALSE depending on system performance.
-* TRUE if automatic refresh of syntax highlighting
-* FALSE if manual refresh of screen and the syntax highlighting
+- TRUE if automatic refresh of syntax highlighting
+- FALSE if manual refresh of screen and the syntax highlighting
 
 Submit the MKZED.SUB file, let M80 assemble and let L80 link to get ZED.COM.
 
 
 # ZED functionality
 
-; A comment like this is displayed in low intensity (faint).
-"A string like this is displayed in italics".
-'A string like this is also displayed in italics'.
-Zilog Z80 mnemonics are displayed in high intensity (boldface):
-	add
-	and
-	call
-	pop
-	push
-	ret
-	xor
+- ; A comment like this is displayed with low intensity.
+- "A string like this is displayed in italics".
+- 'A string like this is also displayed in italics'.
+- Zilog Z80 mnemonics are case insensitive and displayed with high intensity.
 
-Mnemonics are case insensitive so these are also displayed in boldface:
-	BIT
-	DI
-	EI
-	RST
-	SET
+![ZED screenshot](zed-scrn.png)
 
 
 # ZED performance
